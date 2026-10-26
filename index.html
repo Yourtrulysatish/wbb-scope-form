@@ -153,7 +153,7 @@
           <div class="field"><label class="lbl" for="signDate">Date</label><input id="signDate" name="signDate" type="text" readonly></div>
         </div>
         <div class="error" id="e-sign" style="margin:0">Please type your full name.</div>
-        <p class="note" style="margin:0">When you send, your answers are emailed to WBB (hello@webuildbrands.in) with a copy to the email address you gave in question 2. The email is delivered through FormSubmit, an email relay service. Nothing else is collected.</p>
+        <p class="note" style="margin:0">When you send, your answers are emailed to WBB (hello@webuildbrands.in) with a copy to the email address you gave in question 2. The email is sent by a Google Apps Script that WBB controls. Nothing else is collected.</p>
       </div>
       <div style="position:absolute; left:-9999px" aria-hidden="true"><label>Leave this empty <input type="text" id="hp" tabindex="-1" autocomplete="off"></label></div>
       <div class="summary-bar" id="summary" role="alert" aria-live="assertive"></div>
@@ -182,7 +182,7 @@
 <script>
 (function(){
   var TO='hello@webuildbrands.in';
-  var ENDPOINT='https://formsubmit.co/ajax/'+TO;
+  var SCRIPT_URL='';   /* Google Apps Script web app URL (ends in /exec) that sends the email */
   var KEY='wbb-wr-questionnaire-v2';
 
   var REC='Recommend a suitable option', QTY='Recommend a suitable quantity', DISC='Discuss before deciding';
@@ -413,13 +413,13 @@
     return L.join('\n');
   }
   function payload(ref){
-    var o={_subject:'WakandaRides x WBB questionnaire from '+val(QS[0])+' ('+ref+')', _cc:val(QS[1]), _replyto:val(QS[1]), email:val(QS[1]), _template:'table', _captcha:'false'};
-    o['Reference']=ref; o['Submitted']=fmtDate(new Date());
-    o['Name']=val(QS[0]); o['Company']=val(QS[2]); var w=val(QS[3]); if(w) o['Website']=w;
-    QS.forEach(function(it){ if(it.n<=4) return; var v=val(it); if(v) o[(it.n<10?'0':'')+it.n+'. '+it.q]=v; });
-    o['Acknowledgement']='Acknowledged: preferences only, no binding agreement, outcomes not guaranteed.';
-    o['Confirmed by']=$('#signName').value.trim();
-    return o;
+    var f=[['Reference',ref],['Submitted',fmtDate(new Date())],['Name',val(QS[0])],['Company',val(QS[2])]];
+    var w=val(QS[3]); if(w) f.push(['Website',w]);
+    f.push(['Email',val(QS[1])]);
+    QS.forEach(function(it){ if(it.n<=4) return; var v=val(it); if(v) f.push([it.n+'. '+it.q,v]); });
+    f.push(['Acknowledgement','Acknowledged: preferences only, no binding agreement, outcomes not guaranteed.']);
+    f.push(['Confirmed by',$('#signName').value.trim()]);
+    return {ref:ref, name:val(QS[0]), cc:val(QS[1]), fields:f, hp:''};
   }
   var lastText='', lastRef='', lastPayload=null, sending=false;
   function makeRef(){ var c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s=''; for(var i=0;i<4;i++) s+=c.charAt(Math.floor(Math.random()*c.length)); var d=new Date(); return 'WBB-WR-'+d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'-'+s; }
@@ -433,11 +433,12 @@
     if(sending) return; sending=true; $('#retry').disabled=true;
     setState('wait','Sending your answers','This takes a few seconds.');
     var ok=false, msg='';
+    if(!SCRIPT_URL){ sending=false; $('#retry').disabled=false; setState('warn','Email sending is not switched on yet','Your answers are safe below. Please copy the record or save it as a file and send it to '+TO+'.'); return; }
     var ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ if(ctl) ctl.abort(); },25000);
     try{
-      var r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(lastPayload),signal:ctl?ctl.signal:undefined});
+      var r=await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(lastPayload),signal:ctl?ctl.signal:undefined});
       var j={}; try{ j=await r.json(); }catch(e){}
-      ok=r.ok && (j.success===true||j.success==='true'); msg=j.message||'';
+      ok=r.ok && j.ok===true; msg=j.error||'';
     }catch(e){ msg=(e&&e.name==='AbortError')?'The email service did not respond in time.':'The connection failed.'; }
     clearTimeout(to);
     sending=false; $('#retry').disabled=false;
@@ -445,7 +446,7 @@
       setState('ok','Thank you. Your answers were sent.','WBB received your answers by email, and a copy went to '+val(QS[1])+'. Reference '+lastRef+'. Please check your inbox, and your spam folder if it does not appear within a few minutes.');
       try{ localStorage.removeItem(KEY); }catch(e){}
     } else {
-      setState('warn','We could not send the email','Your answers are safe below. Try again, or copy the record or save it as a file and send it to hello@webuildbrands.in.'+(msg?(' ('+msg+')'):''));
+      setState('warn','We could not send the email','Your answers are safe below. Try again, or copy the record or save it as a file and send it to '+TO+'.'+(msg?(' ('+msg+')'):''));
     }
   }
 
