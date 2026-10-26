@@ -433,11 +433,13 @@
     if(sending) return; sending=true; $('#retry').disabled=true;
     setState('wait','Sending your answers','This takes a few seconds.');
     var ok=false, msg='';
+    var ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ if(ctl) ctl.abort(); },25000);
     try{
-      var r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(lastPayload)});
+      var r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(lastPayload),signal:ctl?ctl.signal:undefined});
       var j={}; try{ j=await r.json(); }catch(e){}
       ok=r.ok && (j.success===true||j.success==='true'); msg=j.message||'';
-    }catch(e){ msg='The connection failed.'; }
+    }catch(e){ msg=(e&&e.name==='AbortError')?'The email service did not respond in time.':'The connection failed.'; }
+    clearTimeout(to);
     sending=false; $('#retry').disabled=false;
     if(ok){
       setState('ok','Thank you. Your answers were sent.','WBB received your answers by email, and a copy went to '+val(QS[1])+'. Reference '+lastRef+'. Please check your inbox, and your spam folder if it does not appear within a few minutes.');
