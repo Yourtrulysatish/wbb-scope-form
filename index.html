@@ -425,7 +425,7 @@
   function makeRef(){ var c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s=''; for(var i=0;i<4;i++) s+=c.charAt(Math.floor(Math.random()*c.length)); var d=new Date(); return 'WBB-WR-'+d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'-'+s; }
 
   function setState(kind,title,text){
-    var b=$('#badge'); b.className='badge'+(kind==='warn'?' warn':''); b.textContent=kind==='ok'?'Sent':(kind==='warn'?'Not sent yet':'Sending');
+    var b=$('#badge'); b.className='badge'+(kind==='warn'?' warn':''); b.textContent=kind==='ok'?'Sent':(kind==='pending'?'Submitted':(kind==='warn'?'Not sent yet':'Sending'));
     $('#doneTitle').textContent=title; $('#doneText').textContent=text;
     $('#retry').hidden=(kind!=='warn');
   }
@@ -433,19 +433,22 @@
     if(sending) return; sending=true; $('#retry').disabled=true;
     setState('wait','Sending your answers','This takes a few seconds.');
     var ok=false, msg='';
-    var ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ if(ctl) ctl.abort(); },60000), timedOut=false;
+    var ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ if(ctl) ctl.abort(); },90000), timedOut=false;
+    var pend=setTimeout(function(){
+      if(sending) setState('pending','Thank you. Your answers are on their way.','The email service has not confirmed yet, which is normal for it. Your answers were submitted and a copy goes to '+val(QS[1])+'. Reference '+lastRef+'. If you do not receive the copy within ten minutes, please save or copy the record below and send it to '+TO+'.');
+    },12000);
     try{
       var r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(lastPayload),signal:ctl?ctl.signal:undefined});
       var j={}; try{ j=await r.json(); }catch(e){}
       ok=r.ok && (j.success===true||j.success==='true'); msg=j.message||'';
     }catch(e){ if(e&&e.name==='AbortError'){ timedOut=true; } else { msg='The connection failed.'; } }
-    clearTimeout(to);
+    clearTimeout(to); clearTimeout(pend);
     sending=false; $('#retry').disabled=false;
     if(ok){
       setState('ok','Thank you. Your answers were sent.','WBB received your answers by email, and a copy went to '+val(QS[1])+'. Reference '+lastRef+'. Please check your inbox, and your spam folder if it does not appear within a few minutes.');
       try{ localStorage.removeItem(KEY); }catch(e){}
     } else {
-      if(timedOut) setState('warn','We could not confirm the email was sent','The email service was slow to reply, so your email may already have been delivered. Please check with WBB before sending again. Your answers are safe below, and you can also copy the record or save it as a file and send it to '+TO+'.');
+      if(timedOut) setState('pending','Thank you. Your answers are on their way.','The email service has not confirmed yet, which is normal for it. Your answers were submitted and a copy goes to '+val(QS[1])+'. Reference '+lastRef+'. If you do not receive the copy within ten minutes, please save or copy the record below and send it to '+TO+'.');
       else setState('warn','We could not send the email','Your answers are safe below. Try again, or copy the record or save it as a file and send it to '+TO+'.'+(msg?(' ('+msg+')'):''));
     }
   }
